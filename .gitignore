@@ -1,0 +1,6 @@
+.eggs
+.pytest_cache
+.tox
+*.egg-info
+__pycache__
+.python-version
