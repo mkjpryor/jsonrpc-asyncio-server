@@ -8,34 +8,23 @@ from types import SimpleNamespace
 import pytest
 import mock
 
-from jsonrpc.server.dispatch import Dispatcher, receives_context, dispatcher_exclude
-
-
-def compare_jsonrpc_response(response, expected):
-    if isinstance(response, list):
-        assert len(response) == len(expected)
-        for r, e in zip(response, expected):
-            compare_jsonrpc_response(r, e)
-    else:
-        assert response == expected
+from jsonrpc.server import Dispatcher, receives_context, dispatcher_exclude
 
 
 @pytest.mark.asyncio
 async def test_invalid_not_list_or_object():
     dispatcher = Dispatcher()
     response = await dispatcher.dispatch('1')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "id": None,
-            "error": {
-                "code": -32600,
-                "message": "Invalid request",
-                "data": "payload must be an array or an object"
-            }
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        id = None,
+        error = dict(
+            code = -32600,
+            message = "Invalid request",
+            data = "payload must be an array or an object"
+        )
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -45,10 +34,8 @@ async def test_empty_parameters():
     dispatcher.register(test, name = 'test')
 
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "test", "id": 2}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {"jsonrpc": "2.0", "result": 19, "id": 2}
-    )
+    expected = dict(jsonrpc = "2.0", result = 19, id = 2)
+    assert json.loads(response) == expected
     # In the case of zero parameters, an empty dict is given to the method
     test.assert_called_once_with()
 
@@ -60,10 +47,8 @@ async def test_positional_parameters():
     dispatcher.register(subtract, name = 'subtract')
 
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 1}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {"jsonrpc": "2.0", "result": 19, "id": 1}
-    )
+    expected = dict(jsonrpc = "2.0", result = 19, id = 1)
+    assert json.loads(response) == expected
     subtract.assert_called_once_with(42, 23)
 
 
@@ -74,10 +59,8 @@ async def test_named_parameters():
     dispatcher.register(subtract, name = 'subtract')
 
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "subtract", "params": {"subtrahend": 23, "minuend": 42}, "id": 2}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {"jsonrpc": "2.0", "result": 19, "id": 2}
-    )
+    expected = dict(jsonrpc = "2.0", result = 19, id = 2)
+    assert json.loads(response) == expected
     subtract.assert_called_once_with(subtrahend = 23, minuend = 42)
 
 
@@ -88,10 +71,8 @@ async def test_scalar_result():
     dispatcher.register(test, name = 'test')
 
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "test", "id": 2}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {"jsonrpc": "2.0", "result": 19, "id": 2}
-    )
+    expected = dict(jsonrpc = "2.0", result = 19, id = 2)
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -101,10 +82,8 @@ async def test_list_result():
     dispatcher.register(test, name = 'test')
 
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "test", "id": "4"}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {"jsonrpc": "2.0", "result": [1, 2, 3, '4', {'nested': 'dict'}], "id": "4"}
-    )
+    expected = dict(jsonrpc = "2.0", result = [1, 2, 3, '4', {'nested': 'dict'}], id = "4")
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -119,19 +98,17 @@ async def test_object_result():
     dispatcher.register(test, name = 'test')
 
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "test", "id": "6579ce6c-da1b-4174-a8a2-6277de8684b8"}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "result": {
-                'key1': 1,
-                'key2': 'test',
-                'key3': ['nested', 'array'],
-                'key4': {'nested': 'dict'}
-            },
-            "id": "6579ce6c-da1b-4174-a8a2-6277de8684b8"
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        result = dict(
+            key1 = 1,
+            key2 = 'test',
+            key3 = ['nested', 'array'],
+            key4 = {'nested': 'dict'}
+        ),
+        id = "6579ce6c-da1b-4174-a8a2-6277de8684b8"
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -156,76 +133,70 @@ async def test_notification_method_does_not_exist():
 async def test_method_does_not_exist():
     dispatcher = Dispatcher()
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "foobar", "id": "1"}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32601,
-                "message": "Method not found",
-                "data": "no such method: foobar"
-            },
-            "id": "1"
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        error = dict(
+            code = -32601,
+            message = "Method not found",
+            data = "no such method: foobar"
+        ),
+        id = "1"
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
 async def test_invalid_json():
     dispatcher = Dispatcher()
     response = await dispatcher.dispatch('{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32700,
-                "message": "Parse error",
-                "data": "Expecting ',' delimiter: line 1 column 40 (char 39)"
-            },
-            "id": None
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        error = dict(
+            code = -32700,
+            message = "Parse error",
+            data = "Expecting ',' delimiter: line 1 column 40 (char 39)"
+        ),
+        id = None
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
 async def test_invalid_request():
     dispatcher = Dispatcher()
     response = await dispatcher.dispatch('{"jsonrpc": "1.0", "method": 1, "params": "bar"}')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32600,
-                "message": "Invalid request",
-                "data": [
-                    {
-                        "loc": ["jsonrpc"],
-                        "msg": "unexpected value; permitted: '2.0'",
-                        "type": "value_error.const",
-                        "ctx": {"given": "1.0", "permitted": ["2.0"]}
-                    },
-                    {
-                        "loc": ["method"],
-                        "msg": "method must be a string",
-                        "type": "value_error"
-                    },
-                    {
-                        "loc": ["params"],
-                        "msg": "value is not a valid list",
-                        "type": "type_error.list"
-                    },
-                    {
-                        "loc": ["params"],
-                        "msg": "value is not a valid dict",
-                        "type": "type_error.dict"
-                    }
-                ]
-            },
-            "id": None,
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        error = dict(
+            code = -32600,
+            message = "Invalid request",
+            data = [
+                {
+                    "loc": ["jsonrpc"],
+                    "msg": "unexpected value; permitted: '2.0'",
+                    "type": "value_error.const",
+                    "ctx": {"given": "1.0", "permitted": ["2.0"]}
+                },
+                {
+                    "loc": ["method"],
+                    "msg": "str type expected",
+                    "type": "type_error.str"
+                },
+                {
+                    "loc": ["params"],
+                    "msg": "value is not a valid list",
+                    "type": "type_error.list"
+                },
+                {
+                    "loc": ["params"],
+                    "msg": "value is not a valid dict",
+                    "type": "type_error.dict"
+                }
+            ]
+        ),
+        id = None
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -239,36 +210,32 @@ async def test_batch_invalid_json():
         ]
         """
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32700,
-                "message": "Parse error",
-                "data": "Expecting ':' delimiter: line 5 column 9 (char 138)"
-            },
-            "id": None,
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        error = dict(
+            code = -32700,
+            message = "Parse error",
+            data = "Expecting ':' delimiter: line 5 column 9 (char 138)"
+        ),
+        id = None
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
 async def test_batch_empty_array():
     dispatcher = Dispatcher()
     response = await dispatcher.dispatch('[]')
-    compare_jsonrpc_response(
-        json.loads(response),
-        {
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32600,
-                "message": "Invalid request",
-                "data": "batch payload must contain at least one request"
-            },
-            "id": None
-        }
+    expected = dict(
+        jsonrpc = "2.0",
+        error = dict(
+            code = -32600,
+            message = "Invalid request",
+            data = "batch payload must contain at least one request"
+        ),
+        id =  None
     )
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -296,43 +263,46 @@ async def test_batch():
         ]
         """
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        [
-            {"jsonrpc": "2.0", "result": 20, "id": "1"},
-            {"jsonrpc": "2.0", "result": 19, "id": "2"},
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32600,
-                    "message": "Invalid request",
-                    "data": [
-                        {
-                            "loc": ["jsonrpc"],
-                            "msg": "field required",
-                            "type": "value_error.missing"
-                        },
-                        {
-                            "loc": ["method"],
-                            "msg": "field required",
-                            "type": "value_error.missing"
-                        }
-                    ]
-                },
-                "id": None
+    expected = [
+        {"jsonrpc": "2.0", "result": 20, "id": "1"},
+        {"jsonrpc": "2.0", "result": 19, "id": "2"},
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32600,
+                "message": "Invalid request",
+                "data": [
+                    {
+                        "loc": ["jsonrpc"],
+                        "msg": "field required",
+                        "type": "value_error.missing"
+                    },
+                    {
+                        "loc": ["method"],
+                        "msg": "field required",
+                        "type": "value_error.missing"
+                    },
+                    {
+                        "loc": ["foo"],
+                        "msg": "extra fields not permitted",
+                        "type": "value_error.extra"
+                    }
+                ]
             },
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found",
-                    "data": "no such method: foo.get"
-                },
-                "id": "5"
+            "id": None
+        },
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": "Method not found",
+                "data": "no such method: foo.get"
             },
-            {"jsonrpc": "2.0", "result": ["hello", 5], "id": 9}
-        ]
-    )
+            "id": "5"
+        },
+        {"jsonrpc": "2.0", "result": ["hello", 5], "id": 9}
+    ]
+    assert json.loads(response) == expected
     sum.assert_called_once_with(1, 2, 4)
     notify_hello.assert_called_once_with(7)
     subtract.assert_called_once_with(42, 23)
@@ -378,13 +348,11 @@ async def test_context():
         """,
         dict(context_key1 = 'context value', context_key2 = 10)
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        [
-            {"jsonrpc": "2.0", "result": 10, "id": "1"},
-            {"jsonrpc": "2.0", "result": 11, "id": "2"},
-        ]
-    )
+    expected = [
+        {"jsonrpc": "2.0", "result": 10, "id": "1"},
+        {"jsonrpc": "2.0", "result": 11, "id": "2"},
+    ]
+    assert json.loads(response) == expected
     test_positional.assert_called_once_with(
         dict(context_key1 = 'context value', context_key2 = 10),
         1, 2, 4
@@ -423,15 +391,13 @@ async def test_method_decorator():
         """,
         dict(context_key = 'context value')
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        [
-            {"jsonrpc": "2.0", "result": -19, "id": "1"},
-            {"jsonrpc": "2.0", "result": 10, "id": "2"},
-            {"jsonrpc": "2.0", "result": 9, "id": "3"},
-            {"jsonrpc": "2.0", "result": 11, "id": "4"}
-        ]
-    )
+    expected = [
+        {"jsonrpc": "2.0", "result": -19, "id": "1"},
+        {"jsonrpc": "2.0", "result": 10, "id": "2"},
+        {"jsonrpc": "2.0", "result": 9, "id": "3"},
+        {"jsonrpc": "2.0", "result": 11, "id": "4"}
+    ]
+    assert json.loads(response) == expected
     no_context_args.assert_called_once_with(23, 42)
     no_context_kwargs.assert_called_once_with(arg1 = 23, arg2 = 42)
     with_context.assert_called_once_with(dict(context_key = 'context value'), 23, 42)
@@ -460,40 +426,38 @@ async def test_invalid_params():
         ]
         """
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        [
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32602,
-                    "message": "Invalid params",
-                    "data": "missing a required argument: 'z'"
-                },
-                "id": "1"
+    expected = [
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32602,
+                "message": "Invalid params",
+                "data": "missing a required argument: 'z'"
             },
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32602,
-                    "message": "Invalid params",
-                    "data": "missing a required argument: 'arg1'"
-                },
-                "id": "2"
+            "id": "1"
+        },
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32602,
+                "message": "Invalid params",
+                "data": "missing a required argument: 'arg1'"
             },
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32602,
-                    "message": "Invalid params",
-                    "data": "missing a required argument: 'arg1'"
-                },
-                "id": "3"
+            "id": "2"
+        },
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32602,
+                "message": "Invalid params",
+                "data": "missing a required argument: 'arg1'"
             },
-            {"jsonrpc": "2.0", "result": [5, 10], "id": "4"},
-            {"jsonrpc": "2.0", "result": [10, 20], "id": "5"}
-        ]
-    )
+            "id": "3"
+        },
+        {"jsonrpc": "2.0", "result": [5, 10], "id": "4"},
+        {"jsonrpc": "2.0", "result": [10, 20], "id": "5"}
+    ]
+    assert json.loads(response) == expected
 
 
 class CustomException(Exception):
@@ -520,38 +484,36 @@ async def test_method_execution_error():
         ]
         """
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        [
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32099,
-                    "message": "Runtime error",
-                    "data": "test runtime error"
-                },
-                "id": "1"
+    expected = [
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32099,
+                "message": "Runtime error",
+                "data": "test runtime error"
             },
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32099,
-                    "message": "Module not found error",
-                    "data": "No module named 'does_not_exist'"
-                },
-                "id": "2"
+            "id": "1"
+        },
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32099,
+                "message": "Module not found error",
+                "data": "No module named 'does_not_exist'"
             },
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32099,
-                    "message": "Custom exception",
-                    "data": "custom exception message"
-                },
-                "id": "3"
+            "id": "2"
+        },
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32099,
+                "message": "Custom exception",
+                "data": "custom exception message"
             },
-        ]
-    )
+            "id": "3"
+        },
+    ]
+    assert json.loads(response) == expected
 
 
 @pytest.mark.asyncio
@@ -599,52 +561,50 @@ async def test_register_all():
         """,
         dict(context_key1 = "1")
     )
-    compare_jsonrpc_response(
-        json.loads(response),
-        [
-            {"jsonrpc": "2.0", "result": 20, "id": "1"},
-            {"jsonrpc": "2.0", "result": 21, "id": "2"},
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found",
-                    "data": "no such method: grouped.not_callable"
-                },
-                "id": "3"
+    expected = [
+        {"jsonrpc": "2.0", "result": 20, "id": "1"},
+        {"jsonrpc": "2.0", "result": 21, "id": "2"},
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": "Method not found",
+                "data": "no such method: grouped.not_callable"
             },
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found",
-                    "data": "no such method: grouped.excluded_with_decorator"
-                },
-                "id": "4"
+            "id": "3"
+        },
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": "Method not found",
+                "data": "no such method: grouped.excluded_with_decorator"
             },
-            {"jsonrpc": "2.0", "result": 23, "id": "5"},
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found",
-                    "data": "no such method: include.not_included"
-                },
-                "id": "6"
+            "id": "4"
+        },
+        {"jsonrpc": "2.0", "result": 23, "id": "5"},
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": "Method not found",
+                "data": "no such method: include.not_included"
             },
-            {"jsonrpc": "2.0", "result": 25, "id": "7"},
-            {"jsonrpc": "2.0", "result": 26, "id": "8"},
-            {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found",
-                    "data": "no such method: exclude.excluded"
-                },
-                "id": "9"
+            "id": "6"
+        },
+        {"jsonrpc": "2.0", "result": 25, "id": "7"},
+        {"jsonrpc": "2.0", "result": 26, "id": "8"},
+        {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": "Method not found",
+                "data": "no such method: exclude.excluded"
             },
-        ]
-    )
+            "id": "9"
+        },
+    ]
+    assert json.loads(response) == expected
     method_group.method_1.assert_called_once_with(1, 2)
     method_group.method_2.assert_called_once_with(dict(context_key1 = "1"), 1, 2)
     method_group.excluded_with_decorator.assert_not_called()

@@ -24,7 +24,7 @@ if __name__ == "__main__":
         url = 'https://github.com/mkjpryor/jsonrpc-asyncio-server',
         packages = find_namespace_packages(include = ['jsonrpc.*']),
         include_package_data = True,
-        install_requires = ['pydantic', 'typing-extensions'],
+        install_requires = ['pydantic', 'jsonrpc-asyncio-model'],
         extras_require = {
             'quart': ['quart'],
         }

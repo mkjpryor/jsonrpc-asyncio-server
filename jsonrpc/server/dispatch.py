@@ -3,17 +3,15 @@ Module containing JSON-RPC dispatcher.
 """
 
 import asyncio
-import functools
 import inspect
 import logging
-from collections import UserDict
 
 import json
 
 from pydantic import ValidationError
-from pydantic.json import pydantic_encoder
 
-from . import models, exceptions
+from jsonrpc.model import Request, Response, BatchResponse
+from jsonrpc.model import exceptions
 
 
 def receives_context(func):
@@ -108,7 +106,7 @@ class Dispatcher:
         try:
             request_data = json.loads(raw_input)
         except (ValueError, TypeError) as exc:
-            response = models.JsonRpcErrorResponse(error = exceptions.ParseError(str(exc)))
+            response = Response.create_error(exceptions.ParseError(str(exc)))
         else:
             response = await self.dispatch_obj(request_data, context)
         # Convert the response to JSON
@@ -131,7 +129,7 @@ class Dispatcher:
             return (await self.dispatch_one(input_obj, context))
         else:
             error = exceptions.InvalidRequest('payload must be an array or an object')
-            return models.JsonRpcErrorResponse(error = error)
+            return Response.create_error(error)
 
     async def dispatch_batch(self, requests, context = None):
         """
@@ -144,7 +142,7 @@ class Dispatcher:
         # There must be at least one item in a batch request
         if not requests:
             error = exceptions.InvalidRequest('batch payload must contain at least one request')
-            return models.JsonRpcErrorResponse(error = error)
+            return Response.create_error(error)
         self.logger.info("Processing batch with %d requests", len(requests))
         # Process all the requests at once using gather
         tasks = [self.dispatch_one(request, context) for request in requests]
@@ -153,7 +151,7 @@ class Dispatcher:
         response_data = [result for result in results if result]
         # If all the requests were notifications, there will be no response data
         if response_data:
-            return models.JsonRpcBatchResponse.parse_obj(response_data)
+            return BatchResponse.create(*response_data)
         else:
             return None
 
@@ -167,10 +165,10 @@ class Dispatcher:
         """
         # First, try to process the request using the model
         try:
-            request = models.JsonRpcRequest(**request)
+            request = Request.parse_obj(request)
         except ValidationError as exc:
-            error = exceptions.InvalidRequest(exc.errors())
-            return models.JsonRpcErrorResponse(error = error)
+            # Return an error response containing the validation errrors
+            return Response.create_error(exceptions.InvalidRequest(exc.errors()))
         self.logger.info(
             "Processing JSON-RPC request (id: %s, method: %s)",
             request.id,
@@ -181,13 +179,13 @@ class Dispatcher:
             method = self.methods[request.method]
         except KeyError:
             error = exceptions.MethodNotFound(f'no such method: {request.method}')
-            response = models.JsonRpcErrorResponse(error = error, id = request.id)
+            response = Response.create_error(error, id = request.id)
         else:
             # Execute the method with the given parameters
             try:
                 result = await self._invoke(method, request.params, context)
             except exceptions.JsonRpcException as exc:
-                response = models.JsonRpcErrorResponse(error = exc, id = request.id)
+                response = Response.create_error(exc, id = request.id)
             except Exception as exc:
                 # Log any unexpected exceptions
                 # We assume a JsonRpcException is an expected condition
@@ -196,12 +194,12 @@ class Dispatcher:
                     request.id,
                     request.method
                 )
-                error = exceptions.MethodExecutionError(exc)
-                response = models.JsonRpcErrorResponse(error = error, id = request.id)
+                error = exceptions.MethodExecutionError.from_exception(exc)
+                response = Response.create_error(error, id = request.id)
             else:
-                response = models.JsonRpcSuccessResponse(result = result, id = request.id)
+                response = Response.create_success(result, id = request.id)
         # Log the response information
-        if response.is_error:
+        if response.error:
             self.logger.error(
                 "Error processing JSON-RPC request: (id: %s, method: %s, code: %s, message: \"%s\")",
                 response.id,
@@ -216,7 +214,7 @@ class Dispatcher:
                 request.method
             )
         # We only need to produce a response if the request is not a notification
-        if not request.is_notification:
+        if request.id is not None:
             return response
 
     async def _invoke(self, func, params, context):
