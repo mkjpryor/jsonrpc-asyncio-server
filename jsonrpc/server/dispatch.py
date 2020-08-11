@@ -124,14 +124,14 @@ class Dispatcher:
           context: The context to pass to methods that request it.
         """
         if isinstance(input_obj, list):
-            return (await self.dispatch_batch(input_obj, context))
+            return (await self._dispatch_batch(input_obj, context))
         elif isinstance(input_obj, dict):
-            return (await self.dispatch_one(input_obj, context))
+            return (await self._dispatch_one(input_obj, context))
         else:
             error = exceptions.InvalidRequest('payload must be an array or an object')
             return Response.create_error(error)
 
-    async def dispatch_batch(self, requests, context = None):
+    async def _dispatch_batch(self, requests, context = None):
         """
         Dispatch a batch of JSON-RPC requests.
 
@@ -145,7 +145,7 @@ class Dispatcher:
             return Response.create_error(error)
         self.logger.info("Processing batch with %d requests", len(requests))
         # Process all the requests at once using gather
-        tasks = [self.dispatch_one(request, context) for request in requests]
+        tasks = [self._dispatch_one(request, context) for request in requests]
         results = await asyncio.gather(*tasks)
         # Filter out any null entries from processing notifications
         response_data = [result for result in results if result]
@@ -155,7 +155,7 @@ class Dispatcher:
         else:
             return None
 
-    async def dispatch_one(self, request, context = None):
+    async def _dispatch_one(self, request, context = None):
         """
         Dispatch a single JSON-RPC request.
 
